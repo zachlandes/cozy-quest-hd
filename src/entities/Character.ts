@@ -1,0 +1,249 @@
+import Phaser from 'phaser';
+import { AssetKeys, PlayerActions, type PlayerAction } from '@/types';
+
+/**
+ * Character - A player sprite with name label
+ *
+ * Composition:
+ * - Container (this) - groups sprite + label, handles depth sorting
+ * - Sprite - the visual character (placeholder or real sprite sheet)
+ * - Name label - text above the character
+ *
+ * Responsibilities:
+ * - Display character at a position
+ * - Animate movement via tweens
+ * - Play action animations (idle, walk, wave)
+ * - Show player name
+ *
+ * Used for both local player (responds to input) and remote players
+ * (responds to network state updates).
+ */
+export class Character extends Phaser.GameObjects.Container {
+  private sprite: Phaser.GameObjects.Sprite;
+  private nameLabel: Phaser.GameObjects.Text;
+  private moveTween: Phaser.Tweens.Tween | null = null;
+  private currentAction: PlayerAction = PlayerActions.IDLE;
+
+  // Movement speed in pixels per second
+  private static readonly MOVE_SPEED = 150;
+
+  private readonly playerId: string;
+
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    playerId: string,
+    playerName: string
+  ) {
+    super(scene, x, y);
+    this.playerId = playerId;
+
+    // Create the sprite (placeholder for now)
+    this.sprite = scene.add.sprite(0, 0, AssetKeys.CHARACTER_PLACEHOLDER);
+    this.sprite.setOrigin(0.5, 1); // Bottom-center origin for ground placement
+    this.add(this.sprite);
+
+    // Create the name label above the sprite
+    this.nameLabel = scene.add.text(0, -this.sprite.height - 8, playerName, {
+      fontFamily: 'monospace',
+      fontSize: '12px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2,
+    });
+    this.nameLabel.setOrigin(0.5, 1);
+    this.add(this.nameLabel);
+
+    // Set container depth based on Y position (for sprite sorting)
+    this.setDepth(y);
+
+    // Add to scene
+    scene.add.existing(this);
+
+    // Start idle animation
+    this.playIdle();
+  }
+
+  /**
+   * Make this character clickable.
+   * Returns the character for chaining.
+   */
+  setInteractive(): this {
+    // Set interactive hit area based on sprite size
+    const hitArea = new Phaser.Geom.Rectangle(
+      -this.sprite.width / 2,
+      -this.sprite.height,
+      this.sprite.width,
+      this.sprite.height
+    );
+
+    super.setInteractive(hitArea, Phaser.Geom.Rectangle.Contains);
+    return this;
+  }
+
+  /**
+   * Check if a world point is within this character's bounds.
+   * Useful for click detection before Phaser's built-in hit testing.
+   */
+  containsPoint(worldX: number, worldY: number): boolean {
+    const localX = worldX - this.x;
+    const localY = worldY - this.y;
+
+    // Check against sprite bounds (origin is bottom-center)
+    return (
+      localX >= -this.sprite.width / 2 &&
+      localX <= this.sprite.width / 2 &&
+      localY >= -this.sprite.height &&
+      localY <= 0
+    );
+  }
+
+  /**
+   * Move the character to a target position with animation.
+   * Returns a promise that resolves when movement completes.
+   */
+  walkTo(targetX: number, targetY: number): Promise<void> {
+    return new Promise((resolve) => {
+      // Cancel any existing movement
+      if (this.moveTween) {
+        this.moveTween.stop();
+      }
+
+      // Calculate distance and duration
+      const distance = Phaser.Math.Distance.Between(this.x, this.y, targetX, targetY);
+      const duration = (distance / Character.MOVE_SPEED) * 1000;
+
+      // Skip if already at target
+      if (distance < 1) {
+        resolve();
+        return;
+      }
+
+      // Flip sprite based on movement direction
+      if (targetX < this.x) {
+        this.sprite.setFlipX(true);
+      } else if (targetX > this.x) {
+        this.sprite.setFlipX(false);
+      }
+
+      // Play walk animation
+      this.currentAction = PlayerActions.WALKING;
+
+      // Create movement tween
+      this.moveTween = this.scene.tweens.add({
+        targets: this,
+        x: targetX,
+        y: targetY,
+        duration,
+        ease: 'Linear',
+        onUpdate: () => {
+          // Update depth for sprite sorting (higher Y = in front)
+          this.setDepth(this.y);
+        },
+        onComplete: () => {
+          this.moveTween = null;
+          this.playIdle();
+          resolve();
+        },
+      });
+    });
+  }
+
+  /**
+   * Immediately set position without animation.
+   * Used for initial spawn or network corrections.
+   */
+  setPosition(x: number, y: number): this {
+    super.setPosition(x, y);
+    this.setDepth(y);
+    return this;
+  }
+
+  /**
+   * Play the idle animation (subtle breathing/bob).
+   */
+  private playIdle(): void {
+    this.currentAction = PlayerActions.IDLE;
+
+    // Subtle breathing animation on the sprite
+    this.scene.tweens.add({
+      targets: this.sprite,
+      scaleY: 1.02,
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  /**
+   * Play the wave animation.
+   * Returns a promise that resolves when the animation completes.
+   */
+  playWave(): Promise<void> {
+    return new Promise((resolve) => {
+      this.currentAction = PlayerActions.WAVING;
+
+      // Stop any existing tweens on sprite
+      this.scene.tweens.killTweensOf(this.sprite);
+
+      // Simple wave animation: bob and rotate slightly
+      this.scene.tweens.chain({
+        targets: this.sprite,
+        tweens: [
+          { angle: -10, scaleX: 1.1, duration: 150 },
+          { angle: 10, duration: 150 },
+          { angle: -10, duration: 150 },
+          { angle: 10, duration: 150 },
+          { angle: 0, scaleX: 1, duration: 150 },
+        ],
+        onComplete: () => {
+          this.playIdle();
+          resolve();
+        },
+      });
+    });
+  }
+
+  /**
+   * Stop all movement and animations.
+   */
+  stop(): void {
+    if (this.moveTween) {
+      this.moveTween.stop();
+      this.moveTween = null;
+    }
+    this.scene.tweens.killTweensOf(this.sprite);
+    this.playIdle();
+  }
+
+  /**
+   * Get the current action state.
+   */
+  getAction(): PlayerAction {
+    return this.currentAction;
+  }
+
+  /**
+   * Get the player ID.
+   */
+  getId(): string {
+    return this.playerId;
+  }
+
+  /**
+   * Check if currently moving.
+   */
+  isMoving(): boolean {
+    return this.moveTween !== null && this.moveTween.isPlaying();
+  }
+
+  /**
+   * Clean up when removing from scene.
+   */
+  destroy(fromScene?: boolean): void {
+    this.stop();
+    super.destroy(fromScene);
+  }
+}

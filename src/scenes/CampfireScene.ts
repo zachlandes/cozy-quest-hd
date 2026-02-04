@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
-import { SceneKeys, AssetKeys } from '@/types';
-import type { User } from '@/types';
+import { SceneKeys, AssetKeys, PlayerActions, Emotes } from '@/types';
+import type { User, PlayerAction } from '@/types';
 import { GameConfig } from '@/config';
+import { Character } from '@/entities/Character';
+import { ActionMenu } from '@/ui/ActionMenu';
 
 /**
  * CampfireScene - The main game scene
@@ -21,6 +23,8 @@ import { GameConfig } from '@/config';
  */
 export class CampfireScene extends Phaser.Scene {
   private user: User | null = null;
+  private localPlayer: Character | null = null;
+  private actionMenu: ActionMenu | null = null;
 
   constructor() {
     super({ key: SceneKeys.CAMPFIRE });
@@ -33,22 +37,125 @@ export class CampfireScene extends Phaser.Scene {
     this.createBackground();
     this.createGround();
     this.createCampfire();
+    this.createLocalPlayer();
     this.createFireflies();
-
-    // Temporary welcome text - will remove once characters work
-    const welcomeText = this.user
-      ? `Welcome, ${this.user.username}!`
-      : 'Welcome to Cozy Quest HD!';
-
-    this.add
-      .text(this.cameras.main.centerX, 50, welcomeText, {
-        fontFamily: 'monospace',
-        fontSize: '16px',
-        color: '#ffffff',
-      })
-      .setOrigin(0.5);
+    this.setupInput();
 
     console.log('CampfireScene created');
+  }
+
+  /**
+   * Spawn the local player character.
+   * Starts near the campfire.
+   */
+  private createLocalPlayer(): void {
+    const { width, height } = this.cameras.main;
+    const groundY = height - GameConfig.WORLD.GROUND_HEIGHT;
+
+    // Spawn position: slightly to the left of the fire
+    const spawnX = width / 2 - 80;
+    const spawnY = groundY;
+
+    const playerId = this.user?.id ?? 'local';
+    const playerName = this.user?.username ?? 'You';
+
+    this.localPlayer = new Character(this, spawnX, spawnY, playerId, playerName);
+  }
+
+  /**
+   * Set up input handlers for movement and actions.
+   */
+  private setupInput(): void {
+    // Click/tap handler
+    this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      this.handlePointerDown(pointer);
+    });
+
+    // Spacebar to wave (keyboard shortcut)
+    this.input.keyboard?.on('keydown-SPACE', () => {
+      this.performAction(PlayerActions.WAVING);
+    });
+  }
+
+  /**
+   * Handle click/tap.
+   * - Click on self: show action menu
+   * - Click elsewhere: move to that position (and close menu if open)
+   */
+  private handlePointerDown(pointer: Phaser.Input.Pointer): void {
+    if (!this.localPlayer) return;
+
+    // Check if clicked on self - show action menu
+    if (this.localPlayer.containsPoint(pointer.x, pointer.y)) {
+      this.showActionMenu();
+      return;
+    }
+
+    // Close action menu if open
+    if (this.actionMenu) {
+      this.actionMenu.close();
+      this.actionMenu = null;
+      return;
+    }
+
+    // Otherwise, move to click position
+    this.moveLocalPlayer(pointer.x, pointer.y);
+  }
+
+  /**
+   * Move the local player to a position, constrained to walkable area.
+   */
+  private moveLocalPlayer(targetX: number, targetY: number): void {
+    if (!this.localPlayer) return;
+
+    const { height } = this.cameras.main;
+    const groundY = height - GameConfig.WORLD.GROUND_HEIGHT;
+    const minY = groundY - 60; // Can't walk too far "up" (into background)
+    const maxY = groundY + 20; // Can walk slightly "forward"
+
+    const clampedY = Phaser.Math.Clamp(targetY, minY, maxY);
+    this.localPlayer.walkTo(targetX, clampedY);
+  }
+
+  /**
+   * Show the action menu above the local player.
+   */
+  private showActionMenu(): void {
+    if (!this.localPlayer || this.localPlayer.isMoving()) return;
+
+    // Close existing menu if any
+    if (this.actionMenu) {
+      this.actionMenu.close();
+    }
+
+    // Convert Emotes to ActionMenu format
+    const options = Emotes.map((e) => ({ emoji: e.emoji, action: e.action }));
+
+    // Create menu above player's head
+    this.actionMenu = new ActionMenu(
+      this,
+      this.localPlayer.x,
+      this.localPlayer.y - 50,
+      options,
+      (action) => {
+        this.performAction(action as PlayerAction);
+        this.actionMenu = null;
+      }
+    );
+  }
+
+  /**
+   * Perform an action on the local player.
+   */
+  private performAction(action: PlayerAction): void {
+    if (!this.localPlayer || this.localPlayer.isMoving()) return;
+
+    switch (action) {
+      case PlayerActions.WAVING:
+        this.localPlayer.playWave();
+        break;
+      // Future actions can be added here
+    }
   }
 
   /**

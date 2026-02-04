@@ -42,3 +42,17 @@ export const AssetKeys = {
 } as const;
 
 export type AssetKey = (typeof AssetKeys)[keyof typeof AssetKeys];
+
+// Emote definitions for action menu
+export interface EmoteOption {
+  emoji: string;
+  action: PlayerAction;
+}
+
+// Available emotes - single source of truth
+export const Emotes: EmoteOption[] = [
+  { emoji: '👋', action: PlayerActions.WAVING },
+  // Future emotes:
+  // { emoji: '🪵', action: PlayerActions.SITTING },
+  // { emoji: '🤗', action: PlayerActions.HUGGING },
+];
