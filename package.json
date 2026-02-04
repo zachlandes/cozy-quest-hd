@@ -1,0 +1,21 @@
+{
+  "name": "cozy-quest-hd",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@discord/embedded-app-sdk": "^1.4.0",
+    "phaser": "^3.80.1",
+    "playroomkit": "^0.0.82"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}
