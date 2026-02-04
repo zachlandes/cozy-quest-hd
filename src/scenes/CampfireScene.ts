@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { SceneKeys, AssetKeys, PlayerActions, Emotes } from '@/types';
-import type { User, PlayerAction } from '@/types';
+import type { User, PlayerAction, PlayerState } from '@/types';
 import { GameConfig } from '@/config';
 import { Character } from '@/entities/Character';
 import { ActionMenu } from '@/ui/ActionMenu';
+import { NetworkManager } from '@/managers/NetworkManager';
 
 /**
  * CampfireScene - The main game scene
@@ -12,7 +13,7 @@ import { ActionMenu } from '@/ui/ActionMenu';
  * - Render the cozy campfire environment (background, ground, fire, particles)
  * - Spawn and manage the local player character
  * - Handle input for movement and actions
- * - Sync with other players via NetworkManager (coming later)
+ * - Sync with other players via NetworkManager
  *
  * Visual layers (back to front):
  * 1. Gradient night sky background
@@ -25,6 +26,8 @@ export class CampfireScene extends Phaser.Scene {
   private user: User | null = null;
   private localPlayer: Character | null = null;
   private actionMenu: ActionMenu | null = null;
+  private remotePlayers = new Map<string, Character>();
+  private network: NetworkManager | null = null;
 
   constructor() {
     super({ key: SceneKeys.CAMPFIRE });
@@ -32,6 +35,7 @@ export class CampfireScene extends Phaser.Scene {
 
   create(): void {
     this.user = this.registry.get('user') as User | null;
+    this.network = this.registry.get('network') as NetworkManager | null;
 
     // Build the scene layers in order
     this.createBackground();
@@ -40,6 +44,7 @@ export class CampfireScene extends Phaser.Scene {
     this.createLocalPlayer();
     this.createFireflies();
     this.setupInput();
+    this.setupMultiplayer();
 
     console.log('CampfireScene created');
   }
@@ -115,6 +120,9 @@ export class CampfireScene extends Phaser.Scene {
 
     const clampedY = Phaser.Math.Clamp(targetY, minY, maxY);
     this.localPlayer.walkTo(targetX, clampedY);
+
+    // Sync target position to network (other players will interpolate)
+    this.network?.setLocalState({ x: targetX, y: clampedY });
   }
 
   /**
@@ -153,8 +161,74 @@ export class CampfireScene extends Phaser.Scene {
     switch (action) {
       case PlayerActions.WAVING:
         this.localPlayer.playWave();
+        // Broadcast to other players
+        this.network?.setLocalState({ action: PlayerActions.WAVING });
         break;
       // Future actions can be added here
+    }
+  }
+
+  /**
+   * Set up multiplayer - listen for player join/leave events.
+   */
+  private setupMultiplayer(): void {
+    if (!this.network?.isConnected()) return;
+
+    const localPlayerId = this.network.getLocalPlayerId();
+
+    // Handle players joining
+    this.network.onPlayerJoin((playerId, state) => {
+      // Skip self - we already have local player
+      if (playerId === localPlayerId) {
+        // But sync our initial position
+        if (this.localPlayer) {
+          this.network?.setLocalState({
+            x: this.localPlayer.x,
+            y: this.localPlayer.y,
+            action: PlayerActions.IDLE,
+          });
+        }
+        return;
+      }
+
+      // Spawn remote player
+      this.spawnRemotePlayer(playerId, state);
+    });
+
+    // Handle players leaving
+    this.network.onPlayerLeave((playerId) => {
+      this.removeRemotePlayer(playerId);
+    });
+  }
+
+  /**
+   * Spawn a remote player character.
+   */
+  private spawnRemotePlayer(playerId: string, state: PlayerState): void {
+    if (this.remotePlayers.has(playerId)) return;
+
+    const { width, height } = this.cameras.main;
+    const groundY = height - GameConfig.WORLD.GROUND_HEIGHT;
+
+    // Use state position or default spawn
+    const x = state.x || width / 2 + 80; // Spawn right of fire
+    const y = state.y || groundY;
+
+    const player = new Character(this, x, y, playerId, state.username);
+    this.remotePlayers.set(playerId, player);
+
+    console.log(`Remote player joined: ${state.username}`);
+  }
+
+  /**
+   * Remove a remote player character.
+   */
+  private removeRemotePlayer(playerId: string): void {
+    const player = this.remotePlayers.get(playerId);
+    if (player) {
+      console.log(`Remote player left: ${playerId}`);
+      player.destroy();
+      this.remotePlayers.delete(playerId);
     }
   }
 
@@ -271,6 +345,39 @@ export class CampfireScene extends Phaser.Scene {
   }
 
   update(): void {
-    // Character movement and network sync will go here
+    this.updateRemotePlayers();
+  }
+
+  /**
+   * Update remote player positions and actions from network state.
+   * Called every frame to smoothly interpolate movement.
+   */
+  private updateRemotePlayers(): void {
+    if (!this.network?.isConnected()) return;
+
+    for (const [playerId, character] of this.remotePlayers) {
+      const state = this.network.getPlayerState(playerId);
+      if (!state) continue;
+
+      // Interpolate to target position if not already there
+      if (!character.isMoving()) {
+        const distance = Phaser.Math.Distance.Between(
+          character.x,
+          character.y,
+          state.x,
+          state.y
+        );
+
+        // Only move if significant distance (avoid jitter)
+        if (distance > 5) {
+          character.walkTo(state.x, state.y);
+        }
+      }
+
+      // Handle remote actions (wave, etc.)
+      if (state.action === PlayerActions.WAVING && character.getAction() !== PlayerActions.WAVING) {
+        character.playWave();
+      }
+    }
   }
 }

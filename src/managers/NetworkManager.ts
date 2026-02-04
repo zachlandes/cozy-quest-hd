@@ -47,28 +47,40 @@ export class NetworkManager {
   /**
    * Initialize Playroom connection.
    * Must be called before Phaser game boots.
-   * In Discord, this will auto-authenticate users.
+   *
+   * Requirements:
+   * - For local testing: Playroom mocks auth automatically
+   * - For Discord production: Need VITE_PLAYROOM_GAME_ID from Playroom portal
+   *   and link Discord app in Playroom's "Discord Activity" settings
    */
   async init(discordMode: boolean = false): Promise<void> {
     if (this.initialized) return;
 
+    const gameId = import.meta.env.VITE_PLAYROOM_GAME_ID;
+
+    // For local testing, Playroom will mock even without gameId
+    // For production, gameId is required
+    if (!gameId && discordMode) {
+      console.warn('VITE_PLAYROOM_GAME_ID not set - multiplayer may not work in Discord');
+    }
+
     try {
       await insertCoin({
+        gameId: gameId || undefined,
         discord: discordMode,
-        // Skip lobby for our use case - everyone joins same room
-        skipLobby: true,
+        skipLobby: true, // Everyone joins the same room automatically
       });
 
       this.initialized = true;
       console.log('Playroom initialized, host:', isHost());
 
-      // Set up player join handler
+      // Set up player join handler - called for each player including self
       onPlayerJoin((playerState) => {
         this.handlePlayerJoin(playerState);
       });
     } catch (error) {
       console.error('Failed to initialize Playroom:', error);
-      // Don't throw - allow standalone mode
+      // Don't throw - allow single-player fallback mode
     }
   }
 
