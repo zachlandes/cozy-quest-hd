@@ -7,25 +7,27 @@ import { NetworkManager } from './managers/NetworkManager';
  * Main entry point for Cozy Quest HD
  *
  * Boot sequence:
- * 1. Initialize Discord SDK (or create mock user in standalone mode)
- * 2. Initialize Playroom for multiplayer (optional, graceful fallback)
+ * 1. Detect environment (Discord iframe vs standalone browser)
+ * 2. Initialize Playroom (handles Discord SDK internally when discord: true)
  * 3. Create Phaser game
  * 4. Store references in registry for scenes to access
  */
 async function main() {
   console.log('Cozy Quest HD starting...');
 
-  // Initialize Discord SDK (will fall back to mock user in standalone browser mode)
+  // Detect if running inside Discord Activity iframe
   const discord = DiscordManager.getInstance();
   const user = await discord.init();
   const isDiscord = discord.isDiscordEnvironment();
+
+  console.log(`Environment: ${isDiscord ? 'Discord Activity' : 'Standalone browser'}`);
 
   if (user) {
     console.log(`Welcome, ${user.username}!`);
   }
 
   // Initialize Playroom multiplayer
-  // In Discord mode, this auto-authenticates users
+  // In Discord mode, Playroom handles the Discord SDK lifecycle (ready, auth, etc.)
   // In standalone mode, this creates a local room for testing
   const network = NetworkManager.getInstance();
   try {

@@ -167,7 +167,6 @@ export class CampfireScene extends Phaser.Scene {
       options,
       (action) => {
         this.performAction(action as PlayerAction);
-        this.actionMenu = null;
       }
     );
   }

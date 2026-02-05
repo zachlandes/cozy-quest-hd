@@ -20,6 +20,7 @@ export class ActionMenu extends Phaser.GameObjects.Container {
   private background: Phaser.GameObjects.Graphics;
   private buttons: Phaser.GameObjects.Text[] = [];
   private onAction: (action: string) => void;
+  private isClosing = false;
 
   // Menu styling
   private static readonly BUTTON_SIZE = 36;
@@ -111,6 +112,8 @@ export class ActionMenu extends Phaser.GameObjects.Container {
    * Close the menu with animation.
    */
   close(): void {
+    if (this.isClosing) return;
+    this.isClosing = true;
     this.scene.tweens.add({
       targets: this,
       scale: 0.5,

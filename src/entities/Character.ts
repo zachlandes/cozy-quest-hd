@@ -206,7 +206,6 @@ export class Character extends Phaser.GameObjects.Container {
       this.sprite.stop();
       this.scene.tweens.killTweensOf(this.sprite);
 
-      // Use spritesheet animation if available
       if (this.scene.anims.exists('character-wave')) {
         this.sprite.play('character-wave');
         this.sprite.once('animationcomplete', () => {
@@ -214,15 +213,15 @@ export class Character extends Phaser.GameObjects.Container {
           resolve();
         });
       } else {
-        // Fallback: simple wave animation with tweens
+        // Fallback: tween-based wave for placeholder sprites
         this.scene.tweens.chain({
           targets: this.sprite,
           tweens: [
-            { angle: -10, scaleX: 1.1, duration: 150 },
-            { angle: 10, duration: 150 },
-            { angle: -10, duration: 150 },
-            { angle: 10, duration: 150 },
-            { angle: 0, scaleX: 1, duration: 150 },
+            { angle: -8, duration: 120 },
+            { angle: 8, duration: 120 },
+            { angle: -8, duration: 120 },
+            { angle: 8, duration: 120 },
+            { angle: 0, duration: 120 },
           ],
           onComplete: () => {
             this.playIdle();

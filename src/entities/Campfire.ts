@@ -45,7 +45,8 @@ export class Campfire extends Phaser.GameObjects.Container {
     sprite.setPipeline('Light2D');
     this.add(sprite);
 
-    // Static frame - AI-generated spritesheet frames aren't aligned
+    // Static frame — campfire spritesheet frames vary too much for smooth animation
+    sprite.setFrame(0);
   }
 
   private createFireLight(): void {

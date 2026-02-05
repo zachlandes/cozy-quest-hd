@@ -1,11 +1,18 @@
-import { DiscordSDK } from '@discord/embedded-app-sdk';
 import type { User } from '@/types';
 
-const CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID || '';
-
+/**
+ * DiscordManager - Tracks user identity
+ *
+ * Discord SDK is handled entirely by Playroom (via insertCoin({ discord: true })).
+ * We do NOT import @discord/embedded-app-sdk — Playroom manages the SDK lifecycle,
+ * ready() call, and auth internally. Using our own DiscordSDK instance would
+ * conflict with Playroom's and cause a grey/blank screen.
+ *
+ * This manager just provides a mock user for standalone browser testing.
+ * In Discord mode, user identity comes from Playroom's player profiles.
+ */
 export class DiscordManager {
   private static instance: DiscordManager;
-  private sdk: DiscordSDK | null = null;
   private user: User | null = null;
 
   private constructor() {}
@@ -18,46 +25,13 @@ export class DiscordManager {
   }
 
   async init(): Promise<User | null> {
-    // Skip Discord SDK if no client ID (standalone browser mode)
-    if (!CLIENT_ID) {
-      console.log('No Discord Client ID, running in standalone mode');
-      return this.createMockUser();
-    }
-
-    try {
-      this.sdk = new DiscordSDK(CLIENT_ID);
-      await this.sdk.ready();
-
-      // Authorize with Discord
-      const { code } = await this.sdk.commands.authorize({
-        client_id: CLIENT_ID,
-        response_type: 'code',
-        state: '',
-        prompt: 'none',
-        scope: ['identify'],
-      });
-
-      // In a real app, exchange code for token via backend
-      // For now, we'll use the SDK's built-in auth
-      const auth = await this.sdk.commands.authenticate({ access_token: code });
-
-      if (auth?.user) {
-        this.user = {
-          id: auth.user.id,
-          username: auth.user.username,
-          avatar: auth.user.avatar ?? undefined,
-        };
-      }
-
-      return this.user;
-    } catch (error) {
-      console.warn('Discord SDK initialization failed, falling back to standalone mode:', error);
-      return this.createMockUser();
-    }
+    // Create a temporary user for the boot sequence.
+    // The real username comes from Playroom's player profiles
+    // once insertCoin() completes and players join.
+    return this.createMockUser();
   }
 
   private createMockUser(): User {
-    // Generate a mock user for standalone testing
     const mockId = `mock-${Date.now()}`;
     this.user = {
       id: mockId,
@@ -70,7 +44,12 @@ export class DiscordManager {
     return this.user;
   }
 
+  /**
+   * Detect if we're running inside a Discord Activity iframe.
+   * Check for Discord's frame_id query param or nested iframe context.
+   */
   isDiscordEnvironment(): boolean {
-    return this.sdk !== null;
+    const params = new URLSearchParams(window.location.search);
+    return params.has('frame_id') || params.has('instance_id');
   }
 }

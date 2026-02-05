@@ -142,7 +142,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   /**
-   * Replace magenta (255,0,255) pixels with transparency for a spritesheet.
+   * Replace magenta pixels with transparency for a spritesheet,
+   * then align frames so art centers match across animation frames.
    */
   private async applyColorKeyToSpritesheet(
     textureKey: string,
@@ -151,21 +152,28 @@ export class BootScene extends Phaser.Scene {
   ): Promise<void> {
     if (!this.textures.exists(textureKey)) return;
 
-    const image = await this.processColorKey(textureKey);
+    const canvas = this.applyColorKeyToCanvas(textureKey);
+    if (!canvas) return;
+
+    this.alignFrames(canvas, frameWidth, frameHeight);
+
+    const image = await this.canvasToImage(canvas);
     if (!image) return;
 
-    // Replace texture and re-add as spritesheet
     this.textures.remove(textureKey);
     this.textures.addSpriteSheet(textureKey, image, { frameWidth, frameHeight });
   }
 
   /**
-   * Replace magenta (255,0,255) pixels with transparency for a single image.
+   * Replace magenta pixels with transparency for a single image.
    */
   private async applyColorKeyTransparency(textureKey: string): Promise<void> {
     if (!this.textures.exists(textureKey)) return;
 
-    const image = await this.processColorKey(textureKey);
+    const canvas = this.applyColorKeyToCanvas(textureKey);
+    if (!canvas) return;
+
+    const image = await this.canvasToImage(canvas);
     if (!image) return;
 
     this.textures.remove(textureKey);
@@ -173,58 +181,142 @@ export class BootScene extends Phaser.Scene {
   }
 
   /**
-   * Process a texture to replace magenta with transparency.
-   * Returns an HTMLImageElement with the processed image.
+   * Apply color key transparency to a texture, returning the canvas
+   * for further processing (e.g. frame alignment).
    */
-  private processColorKey(textureKey: string): Promise<HTMLImageElement | null> {
-    return new Promise((resolve) => {
-      const texture = this.textures.get(textureKey);
-      const source = texture.getSourceImage() as HTMLImageElement;
+  private applyColorKeyToCanvas(textureKey: string): HTMLCanvasElement | null {
+    const texture = this.textures.get(textureKey);
+    const source = texture.getSourceImage() as HTMLImageElement;
 
-      console.log(`[ColorKey] Processing ${textureKey}: ${source.width}x${source.height}`);
+    const canvas = document.createElement('canvas');
+    canvas.width = source.width;
+    canvas.height = source.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
 
-      const canvas = document.createElement('canvas');
-      canvas.width = source.width;
-      canvas.height = source.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        console.log(`[ColorKey] Failed to get canvas context for ${textureKey}`);
-        resolve(null);
-        return;
+    ctx.drawImage(source, 0, 0);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      if (r > 160 && r < 210 && g < 70 && b > 100 && b < 170) {
+        data[i + 3] = 0;
       }
+    }
 
-      ctx.drawImage(source, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+  }
 
-      // Sample first few pixels to see what colors we have
-      console.log(`[ColorKey] First pixel of ${textureKey}: R=${data[0]} G=${data[1]} B=${data[2]} A=${data[3]}`);
-      // Sample corner pixel (likely background)
-      console.log(`[ColorKey] Corner pixel: R=${data[0]} G=${data[1]} B=${data[2]}`);
+  /**
+   * Align frames within a spritesheet so each row's art shares
+   * the same horizontal center and vertical baseline.
+   *
+   * Center-x is computed from the bottom 40% of visible content only,
+   * so limb movement (waving arms) doesn't shift the body.
+   */
+  private alignFrames(
+    canvas: HTMLCanvasElement,
+    frameWidth: number,
+    frameHeight: number
+  ): void {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-      let transparentCount = 0;
+    const cols = Math.floor(canvas.width / frameWidth);
+    const rows = Math.floor(canvas.height / frameHeight);
 
-      // Replace pink/magenta background pixels with transparent
-      // The AI-generated images use various pink shades as background:
-      // - R: 170-200, G: 20-60, B: 110-160
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
+    for (let row = 0; row < rows; row++) {
+      const frameBounds: Array<{ centerX: number; bottom: number; empty: boolean }> = [];
 
-        // Check for pink/magenta background (matching AI image backgrounds)
-        // These images have pinkish backgrounds, not pure magenta
-        if (r > 160 && r < 210 && g < 70 && b > 100 && b < 170) {
-          data[i + 3] = 0; // Set alpha to 0
-          transparentCount++;
+      for (let col = 0; col < cols; col++) {
+        const fx = col * frameWidth;
+        const fy = row * frameHeight;
+        const frameData = ctx.getImageData(fx, fy, frameWidth, frameHeight);
+        const d = frameData.data;
+
+        // First pass: find the bottom of visible content
+        let maxY = 0;
+        let minY = frameHeight;
+        let hasPixels = false;
+
+        for (let y = 0; y < frameHeight; y++) {
+          for (let x = 0; x < frameWidth; x++) {
+            if (d[(y * frameWidth + x) * 4 + 3] > 0) {
+              minY = Math.min(minY, y);
+              maxY = Math.max(maxY, y);
+              hasPixels = true;
+            }
+          }
         }
+
+        if (!hasPixels) {
+          frameBounds.push({ centerX: 0, bottom: 0, empty: true });
+          continue;
+        }
+
+        // Second pass: compute center-x from bottom 40% of visible content
+        // (feet/legs area — stable across poses with arm movement)
+        const visibleHeight = maxY - minY;
+        const bottomThreshold = maxY - visibleHeight * 0.4;
+        let bMinX = frameWidth;
+        let bMaxX = 0;
+
+        for (let y = Math.floor(bottomThreshold); y <= maxY; y++) {
+          for (let x = 0; x < frameWidth; x++) {
+            if (d[(y * frameWidth + x) * 4 + 3] > 0) {
+              bMinX = Math.min(bMinX, x);
+              bMaxX = Math.max(bMaxX, x);
+            }
+          }
+        }
+
+        frameBounds.push({
+          centerX: (bMinX + bMaxX) / 2,
+          bottom: maxY,
+          empty: false,
+        });
       }
 
-      console.log(`[ColorKey] Made ${transparentCount} pixels transparent in ${textureKey}`);
+      // Use first non-empty frame as reference
+      const ref = frameBounds.find((b) => !b.empty);
+      if (!ref) continue;
 
-      ctx.putImageData(imageData, 0, 0);
+      // Shift each subsequent frame to align with reference
+      for (let col = 0; col < cols; col++) {
+        const bounds = frameBounds[col];
+        if (bounds.empty) continue;
 
-      // Convert canvas to image
+        const dx = Math.round(ref.centerX - bounds.centerX);
+        const dy = Math.round(ref.bottom - bounds.bottom);
+        if (dx === 0 && dy === 0) continue;
+
+        const fx = col * frameWidth;
+        const fy = row * frameHeight;
+
+        // Extract frame, clear it, redraw shifted
+        const frameData = ctx.getImageData(fx, fy, frameWidth, frameHeight);
+        ctx.clearRect(fx, fy, frameWidth, frameHeight);
+
+        const tmp = document.createElement('canvas');
+        tmp.width = frameWidth;
+        tmp.height = frameHeight;
+        const tmpCtx = tmp.getContext('2d')!;
+        tmpCtx.putImageData(frameData, 0, 0);
+
+        ctx.drawImage(tmp, fx + dx, fy + dy);
+
+        console.log(`[Align] Row ${row} frame ${col}: shifted by (${dx}, ${dy})`);
+      }
+    }
+  }
+
+  private canvasToImage(canvas: HTMLCanvasElement): Promise<HTMLImageElement | null> {
+    return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => resolve(img);
       img.onerror = () => resolve(null);
@@ -262,7 +354,7 @@ export class BootScene extends Phaser.Scene {
         repeat: -1,
       });
 
-      // Wave animation - row 2, first 2 frames
+      // Wave animation - frames aligned at load time (bottom-anchored)
       this.anims.create({
         key: 'character-wave',
         frames: this.anims.generateFrameNumbers(AssetKeys.CHARACTER, {
