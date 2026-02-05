@@ -3,6 +3,7 @@ import { SceneKeys, AssetKeys, PlayerActions, Emotes } from '@/types';
 import type { User, PlayerAction, PlayerState } from '@/types';
 import { GameConfig } from '@/config';
 import { Character } from '@/entities/Character';
+import { Campfire } from '@/entities/Campfire';
 import { ActionMenu } from '@/ui/ActionMenu';
 import { NetworkManager } from '@/managers/NetworkManager';
 
@@ -28,7 +29,6 @@ export class CampfireScene extends Phaser.Scene {
   private actionMenu: ActionMenu | null = null;
   private remotePlayers = new Map<string, Character>();
   private network: NetworkManager | null = null;
-  private fireLight: Phaser.GameObjects.Light | null = null;
 
   constructor() {
     super({ key: SceneKeys.CAMPFIRE });
@@ -43,7 +43,6 @@ export class CampfireScene extends Phaser.Scene {
 
     // Build the scene layers in order
     this.createBackground();
-    this.createGround();
     this.createCampfire();
     this.createLocalPlayer();
     this.createFireflies();
@@ -67,20 +66,6 @@ export class CampfireScene extends Phaser.Scene {
     const g = ((ambient >> 8) & 0xff) / 255;
     const b = (ambient & 0xff) / 255;
     this.lights.setAmbientColor(Phaser.Display.Color.GetColor(r * 255, g * 255, b * 255));
-
-    // Campfire position for the light
-    const centerX = this.cameras.main.centerX;
-    const groundY = this.cameras.main.height - GameConfig.WORLD.GROUND_HEIGHT;
-    const fireY = groundY - 20;
-
-    // Add warm point light at campfire
-    this.fireLight = this.lights.addLight(
-      centerX,
-      fireY,
-      GameConfig.LIGHTING.FIRE_RADIUS,
-      GameConfig.LIGHTING.FIRE_COLOR,
-      GameConfig.LIGHTING.FIRE_INTENSITY
-    );
   }
 
   /**
@@ -307,102 +292,10 @@ export class CampfireScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * Ground plane - simple dark green with grass tufts for texture.
-   * Characters will walk on this area.
-   * Uses Light2D pipeline to be affected by campfire light.
-   */
-  private createGround(): void {
-    const { width, height } = this.cameras.main;
-    const groundY = height - GameConfig.WORLD.GROUND_HEIGHT;
-    const groundHeight = GameConfig.WORLD.GROUND_HEIGHT + 20; // Extra for grass tufts
-
-    // Create ground texture procedurally
-    const graphics = this.make.graphics({ x: 0, y: 0 });
-
-    // Base ground color
-    graphics.fillStyle(GameConfig.COLORS.GROUND);
-    graphics.fillRect(0, 20, width, groundHeight);
-
-    // Grass tufts for visual texture
-    graphics.fillStyle(GameConfig.COLORS.GROUND_ACCENT);
-    for (let x = 0; x < width; x += 20) {
-      const tuftHeight = 5 + Math.random() * 10;
-      graphics.fillRect(x, 20 - tuftHeight, 3, tuftHeight + 5);
-    }
-
-    // Generate texture and create image
-    graphics.generateTexture(AssetKeys.GROUND_TEXTURE, width, groundHeight);
-    const groundImage = this.add.image(0, groundY - 20, AssetKeys.GROUND_TEXTURE);
-    groundImage.setOrigin(0, 0);
-    groundImage.setPipeline('Light2D'); // Affected by lighting
-
-    graphics.destroy();
-  }
-
-  /**
-   * Campfire - the focal point of the scene.
-   * Uses real campfire image with pulsing tween + ember particles rising.
-   * The fire light flickers to simulate real flames.
-   */
   private createCampfire(): void {
     const centerX = this.cameras.main.centerX;
     const groundY = this.cameras.main.height - GameConfig.WORLD.GROUND_HEIGHT;
-    const fireY = groundY - 20;
-
-    // Use real campfire spritesheet or fallback to placeholder
-    const fireKey = this.textures.exists(AssetKeys.CAMPFIRE)
-      ? AssetKeys.CAMPFIRE
-      : AssetKeys.FIRE_PLACEHOLDER;
-
-    const fire = this.add.sprite(centerX, fireY, fireKey);
-    // Spritesheet frame is 632×1696, scale to ~120px tall for the fire
-    const fireScale = fireKey === AssetKeys.CAMPFIRE ? 0.07 : 2;
-    fire.setScale(fireScale);
-    fire.setOrigin(0.5, 1); // Bottom-center
-    fire.setPipeline('Light2D'); // Affected by lighting
-
-    // Play spritesheet animation if available
-    if (this.anims.exists('campfire-burn')) {
-      fire.play('campfire-burn');
-    } else {
-      // Fallback: Pulse animation for placeholder
-      const pulseScale = fireScale * 1.1;
-      this.tweens.add({
-        targets: fire,
-        scaleX: pulseScale,
-        scaleY: pulseScale * 1.05,
-        duration: GameConfig.TIMING.FIRE_PULSE_MS,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut',
-      });
-    }
-
-    // Fire light flicker effect - subtle intensity/radius variation
-    if (this.fireLight) {
-      this.tweens.add({
-        targets: this.fireLight,
-        intensity: { from: 1.6, to: 2.0 },
-        radius: { from: 330, to: 370 },
-        duration: 150,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut',
-      });
-    }
-
-    // Ember particles rising from the fire
-    // Real ember image is 2048x2048 with ~300px visible core, scale to ~12px
-    const emberScale = this.textures.exists(AssetKeys.EMBER) ? 0.04 : 1;
-    this.add.particles(centerX, fireY - 10, AssetKeys.EMBER, {
-      speed: { min: 20, max: 50 },
-      angle: { min: 250, max: 290 }, // Upward cone
-      scale: { start: emberScale, end: 0 },
-      lifespan: GameConfig.TIMING.EMBER_LIFESPAN_MS,
-      frequency: 200,
-      blendMode: Phaser.BlendModes.ADD,
-    });
+    new Campfire(this, centerX, groundY);
   }
 
   /**
