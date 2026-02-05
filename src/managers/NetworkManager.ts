@@ -3,6 +3,7 @@ import {
   onPlayerJoin,
   myPlayer,
   isHost,
+  RPC,
   type PlayerState as PlayroomPlayerState,
 } from 'playroomkit';
 import type { PlayerState, PlayerAction } from '@/types';
@@ -27,6 +28,7 @@ import { PlayerActions } from '@/types';
 
 type PlayerJoinCallback = (playerId: string, state: PlayerState) => void;
 type PlayerLeaveCallback = (playerId: string) => void;
+type ActionCallback = (playerId: string, action: PlayerAction) => void;
 
 export class NetworkManager {
   private static instance: NetworkManager;
@@ -34,6 +36,7 @@ export class NetworkManager {
   private players = new Map<string, PlayroomPlayerState>();
   private joinCallbacks: PlayerJoinCallback[] = [];
   private leaveCallbacks: PlayerLeaveCallback[] = [];
+  private actionCallbacks: ActionCallback[] = [];
 
   private constructor() {}
 
@@ -83,6 +86,13 @@ export class NetworkManager {
 
       this.initialized = true;
       console.log(`Playroom initialized, host: ${isHost()}, room: ${roomCode}`);
+
+      // Register RPC handler for actions (wave, etc.)
+      RPC.register('action', async (data: { action: PlayerAction }, caller) => {
+        for (const callback of this.actionCallbacks) {
+          callback(caller.id, data.action);
+        }
+      });
 
       // Set up player join handler - called for each player including self
       onPlayerJoin((playerState) => {
@@ -230,5 +240,21 @@ export class NetworkManager {
    */
   isConnected(): boolean {
     return this.initialized;
+  }
+
+  /**
+   * Broadcast an action to all other players via RPC.
+   * Use this for discrete events like emotes that don't need state tracking.
+   */
+  broadcastAction(action: PlayerAction): void {
+    if (!this.initialized) return;
+    RPC.call('action', { action }, RPC.Mode.OTHERS);
+  }
+
+  /**
+   * Register callback for when remote players perform actions.
+   */
+  onRemoteAction(callback: ActionCallback): void {
+    this.actionCallbacks.push(callback);
   }
 }
