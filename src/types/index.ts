@@ -23,6 +23,11 @@ export const PlayerActions = {
 
 export type PlayerAction = (typeof PlayerActions)[keyof typeof PlayerActions];
 
+// Action durations in milliseconds - used by all clients to know when an action expires
+export const ActionDurations: Partial<Record<PlayerAction, number>> = {
+  [PlayerActions.WAVING]: 2000, // ~2 seconds (matches animation: 2 frames × 3 repeats at 3fps)
+};
+
 // Scene keys
 export const SceneKeys = {
   BOOT: 'Boot',

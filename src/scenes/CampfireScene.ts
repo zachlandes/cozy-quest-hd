@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { SceneKeys, AssetKeys, PlayerActions, Emotes } from '@/types';
+import { SceneKeys, AssetKeys, PlayerActions, ActionDurations, Emotes } from '@/types';
 import type { User, PlayerAction, PlayerState } from '@/types';
 import { GameConfig } from '@/config';
 import { Character } from '@/entities/Character';
@@ -29,6 +29,8 @@ export class CampfireScene extends Phaser.Scene {
   private actionMenu: ActionMenu | null = null;
   private remotePlayers = new Map<string, Character>();
   private network: NetworkManager | null = null;
+  // Track last processed action timestamp per player to avoid re-triggering same action
+  private lastProcessedActionTime = new Map<string, number>();
 
   constructor() {
     super({ key: SceneKeys.CAMPFIRE });
@@ -179,12 +181,9 @@ export class CampfireScene extends Phaser.Scene {
 
     switch (action) {
       case PlayerActions.WAVING:
-        // Broadcast action start to other players
+        // Broadcast action with timestamp - remote clients calculate expiration
         this.network?.setLocalState({ action: PlayerActions.WAVING });
-        // Play animation and broadcast completion when done
-        this.localPlayer.playWave().then(() => {
-          this.network?.setLocalState({ action: PlayerActions.IDLE });
-        });
+        this.localPlayer.playWave();
         break;
       // Future actions can be added here
     }
@@ -256,6 +255,7 @@ export class CampfireScene extends Phaser.Scene {
       console.log(`Remote player left: ${playerId}`);
       player.destroy();
       this.remotePlayers.delete(playerId);
+      this.lastProcessedActionTime.delete(playerId);
     }
   }
 
@@ -366,7 +366,13 @@ export class CampfireScene extends Phaser.Scene {
       }
 
       // Handle remote actions (wave, etc.)
-      if (state.action === PlayerActions.WAVING && character.getAction() !== PlayerActions.WAVING) {
+      // Only trigger if: action has a duration, hasn't expired, and we haven't already processed this action
+      const duration = ActionDurations[state.action];
+      const isActionActive = duration && (Date.now() - state.actionTime < duration);
+      const alreadyProcessed = this.lastProcessedActionTime.get(playerId) === state.actionTime;
+
+      if (state.action === PlayerActions.WAVING && isActionActive && !alreadyProcessed) {
+        this.lastProcessedActionTime.set(playerId, state.actionTime);
         character.playWave();
       }
     }
