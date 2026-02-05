@@ -54,7 +54,7 @@ export class Character extends Phaser.GameObjects.Container {
     this.add(this.sprite);
 
     // Create the name label above the sprite
-    this.nameLabel = scene.add.text(0, -this.sprite.height - 8, playerName, {
+    this.nameLabel = scene.add.text(0, -this.sprite.displayHeight - 8, playerName, {
       fontFamily: 'monospace',
       fontSize: '12px',
       color: '#ffffff',
