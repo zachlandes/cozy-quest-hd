@@ -99,11 +99,11 @@ export class Character extends Phaser.GameObjects.Container {
     const localX = worldX - this.x;
     const localY = worldY - this.y;
 
-    // Check against sprite bounds (origin is bottom-center)
+    // Check against displayed sprite bounds (origin is bottom-center)
     return (
-      localX >= -this.sprite.width / 2 &&
-      localX <= this.sprite.width / 2 &&
-      localY >= -this.sprite.height &&
+      localX >= -this.sprite.displayWidth / 2 &&
+      localX <= this.sprite.displayWidth / 2 &&
+      localY >= -this.sprite.displayHeight &&
       localY <= 0
     );
   }
@@ -251,6 +251,13 @@ export class Character extends Phaser.GameObjects.Container {
    */
   getAction(): PlayerAction {
     return this.currentAction;
+  }
+
+  /**
+   * Get the world Y position of the top of the character's head.
+   */
+  getHeadY(): number {
+    return this.y - this.sprite.displayHeight;
   }
 
   /**

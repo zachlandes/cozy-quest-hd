@@ -163,7 +163,7 @@ export class CampfireScene extends Phaser.Scene {
     this.actionMenu = new ActionMenu(
       this,
       this.localPlayer.x,
-      this.localPlayer.y - 50,
+      this.localPlayer.getHeadY() - 8,
       options,
       (action) => {
         this.performAction(action as PlayerAction);

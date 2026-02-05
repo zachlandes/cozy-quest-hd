@@ -18,7 +18,7 @@ export class Campfire extends Phaser.GameObjects.Container {
   private fireLight: Phaser.GameObjects.Light | null = null;
 
   private static readonly FIRE_SCALE = 0.14;
-  private static readonly SPRITE_OFFSET_Y = 50; // Compensate for empty space below art in frame
+  private static readonly SPRITE_OFFSET_Y = 80; // Compensate for empty space below art in frame
   private static readonly LIGHT_OFFSET_Y = -40;
   private static readonly EMBER_OFFSET_Y = -100;
 
