@@ -179,9 +179,12 @@ export class CampfireScene extends Phaser.Scene {
 
     switch (action) {
       case PlayerActions.WAVING:
-        this.localPlayer.playWave();
-        // Broadcast to other players
+        // Broadcast action start to other players
         this.network?.setLocalState({ action: PlayerActions.WAVING });
+        // Play animation and broadcast completion when done
+        this.localPlayer.playWave().then(() => {
+          this.network?.setLocalState({ action: PlayerActions.IDLE });
+        });
         break;
       // Future actions can be added here
     }
