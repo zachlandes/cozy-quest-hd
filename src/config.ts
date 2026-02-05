@@ -17,13 +17,22 @@ export const GameConfig = {
 
   // Visual settings
   COLORS: {
-    BACKGROUND_TOP: 0x141428, // Dark night sky
-    BACKGROUND_BOTTOM: 0x1a1a2e, // Slightly lighter at horizon
-    GROUND: 0x2d4a3e, // Dark forest green
-    GROUND_ACCENT: 0x3d5a4e, // Lighter grass accents
+    BACKGROUND_TOP: 0x0a0a14, // Darker night sky for better light contrast
+    BACKGROUND_BOTTOM: 0x141428, // Slightly lighter at horizon
+    GROUND: 0x1a2e24, // Darker forest green (lights will brighten)
+    GROUND_ACCENT: 0x2d4a3e, // Lighter grass accents
     FIRE_GLOW: 0xff6600, // Orange fire
     EMBER: 0xffaa00, // Orange-yellow embers
     FIREFLY: 0xffffaa, // Pale yellow fireflies
+  },
+
+  // Lighting settings (HD-2D style)
+  LIGHTING: {
+    AMBIENT_COLOR: 0x222244, // Cool blue ambient (outside firelight)
+    AMBIENT_INTENSITY: 0.3, // Low ambient for contrast
+    FIRE_COLOR: 0xff8844, // Warm orange firelight
+    FIRE_INTENSITY: 1.8, // Bright fire
+    FIRE_RADIUS: 350, // How far the light reaches
   },
 
   // Animation timings

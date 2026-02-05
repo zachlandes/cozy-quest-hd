@@ -33,11 +33,19 @@ export type SceneKey = (typeof SceneKeys)[keyof typeof SceneKeys];
 
 // Asset keys
 export const AssetKeys = {
-  // Textures
+  // Placeholder textures (generated programmatically)
   FIRE_PLACEHOLDER: 'fire-placeholder',
   CHARACTER_PLACEHOLDER: 'character-placeholder',
+  GROUND_TEXTURE: 'ground-texture',
+
+  // Real assets (loaded from files)
+  BACKGROUND_IMAGE: 'background-image',
+  CHARACTER: 'character',
+  CAMPFIRE: 'campfire',
   EMBER: 'ember',
   FIREFLY: 'firefly',
+
+  // Legacy (for procedural background)
   BACKGROUND: 'background',
 } as const;
 

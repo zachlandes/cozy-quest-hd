@@ -65,14 +65,24 @@ export class NetworkManager {
     }
 
     try {
+      // For local development, use a shared room code so all browser instances join the same room
+      // In Discord, Playroom auto-assigns rooms based on the voice channel
+      // Playroom uses hash (#r=CODE) not query string (?r=CODE)
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+      const roomCode = hashParams.get('r') || 'dev-room';
+
       await insertCoin({
         gameId: gameId || undefined,
         discord: discordMode,
-        skipLobby: true, // Everyone joins the same room automatically
+        // Show Playroom lobby for local browser testing (shareable room link)
+        // Skip lobby in Discord (auto-groups by voice channel)
+        skipLobby: discordMode,
+        // Room code only matters for non-Discord mode
+        roomCode: discordMode ? undefined : roomCode,
       });
 
       this.initialized = true;
-      console.log('Playroom initialized, host:', isHost());
+      console.log(`Playroom initialized, host: ${isHost()}, room: ${roomCode}`);
 
       // Set up player join handler - called for each player including self
       onPlayerJoin((playerState) => {
@@ -89,6 +99,7 @@ export class NetworkManager {
    */
   private handlePlayerJoin(playerState: PlayroomPlayerState): void {
     const playerId = playerState.id;
+    console.log(`[Network] Player joined: ${playerId}, total players: ${this.players.size + 1}`);
     this.players.set(playerId, playerState);
 
     // Get initial state or create default
@@ -122,6 +133,16 @@ export class NetworkManager {
    */
   onPlayerJoin(callback: PlayerJoinCallback): void {
     this.joinCallbacks.push(callback);
+
+    // Replay existing players to this callback
+    // This handles the timing issue where Playroom fires join events
+    // before the scene registers its callbacks
+    for (const playerId of this.players.keys()) {
+      const state = this.getPlayerState(playerId);
+      if (state) {
+        callback(playerId, state);
+      }
+    }
   }
 
   /**
@@ -187,6 +208,14 @@ export class NetworkManager {
    */
   getLocalPlayerId(): string | null {
     return myPlayer()?.id ?? null;
+  }
+
+  /**
+   * Get the local player's profile name from Playroom.
+   * This is the name chosen in the lobby.
+   */
+  getLocalPlayerName(): string | null {
+    return myPlayer()?.getProfile()?.name ?? null;
   }
 
   /**

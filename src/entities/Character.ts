@@ -39,9 +39,18 @@ export class Character extends Phaser.GameObjects.Container {
     super(scene, x, y);
     this.playerId = playerId;
 
-    // Create the sprite (placeholder for now)
-    this.sprite = scene.add.sprite(0, 0, AssetKeys.CHARACTER_PLACEHOLDER);
+    // Use real character spritesheet or fallback to placeholder
+    const charKey = scene.textures.exists(AssetKeys.CHARACTER)
+      ? AssetKeys.CHARACTER
+      : AssetKeys.CHARACTER_PLACEHOLDER;
+
+    this.sprite = scene.add.sprite(0, 0, charKey);
     this.sprite.setOrigin(0.5, 1); // Bottom-center origin for ground placement
+    // Spritesheet frame is 352×512, scale to ~64px tall
+    if (charKey === AssetKeys.CHARACTER) {
+      this.sprite.setScale(0.25);
+    }
+    this.sprite.setPipeline('Light2D'); // Affected by campfire lighting
     this.add(this.sprite);
 
     // Create the name label above the sprite
@@ -129,6 +138,9 @@ export class Character extends Phaser.GameObjects.Container {
 
       // Play walk animation
       this.currentAction = PlayerActions.WALKING;
+      if (this.scene.anims.exists('character-walk')) {
+        this.sprite.play('character-walk');
+      }
 
       // Create movement tween
       this.moveTween = this.scene.tweens.add({
@@ -161,20 +173,25 @@ export class Character extends Phaser.GameObjects.Container {
   }
 
   /**
-   * Play the idle animation (subtle breathing/bob).
+   * Play the idle animation.
    */
   private playIdle(): void {
     this.currentAction = PlayerActions.IDLE;
 
-    // Subtle breathing animation on the sprite
-    this.scene.tweens.add({
-      targets: this.sprite,
-      scaleY: 1.02,
-      duration: 1500,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
-    });
+    // Use spritesheet animation if available
+    if (this.scene.anims.exists('character-idle')) {
+      this.sprite.play('character-idle');
+    } else {
+      // Fallback: subtle breathing animation on placeholder
+      this.scene.tweens.add({
+        targets: this.sprite,
+        scaleY: 1.02,
+        duration: 1500,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+    }
   }
 
   /**
@@ -185,24 +202,34 @@ export class Character extends Phaser.GameObjects.Container {
     return new Promise((resolve) => {
       this.currentAction = PlayerActions.WAVING;
 
-      // Stop any existing tweens on sprite
+      // Stop any existing animations/tweens
+      this.sprite.stop();
       this.scene.tweens.killTweensOf(this.sprite);
 
-      // Simple wave animation: bob and rotate slightly
-      this.scene.tweens.chain({
-        targets: this.sprite,
-        tweens: [
-          { angle: -10, scaleX: 1.1, duration: 150 },
-          { angle: 10, duration: 150 },
-          { angle: -10, duration: 150 },
-          { angle: 10, duration: 150 },
-          { angle: 0, scaleX: 1, duration: 150 },
-        ],
-        onComplete: () => {
+      // Use spritesheet animation if available
+      if (this.scene.anims.exists('character-wave')) {
+        this.sprite.play('character-wave');
+        this.sprite.once('animationcomplete', () => {
           this.playIdle();
           resolve();
-        },
-      });
+        });
+      } else {
+        // Fallback: simple wave animation with tweens
+        this.scene.tweens.chain({
+          targets: this.sprite,
+          tweens: [
+            { angle: -10, scaleX: 1.1, duration: 150 },
+            { angle: 10, duration: 150 },
+            { angle: -10, duration: 150 },
+            { angle: 10, duration: 150 },
+            { angle: 0, scaleX: 1, duration: 150 },
+          ],
+          onComplete: () => {
+            this.playIdle();
+            resolve();
+          },
+        });
+      }
     });
   }
 
@@ -214,6 +241,7 @@ export class Character extends Phaser.GameObjects.Container {
       this.moveTween.stop();
       this.moveTween = null;
     }
+    this.sprite.stop();
     this.scene.tweens.killTweensOf(this.sprite);
     this.playIdle();
   }
